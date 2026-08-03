@@ -711,12 +711,15 @@ def fetch_dcf_historicals(ticker: str) -> dict:
         if len(v) < 2: return None
         return ((v[-1] / v[0]) ** (1 / (len(v)-1)) - 1) * 100
 
-    rev_growths  = [r["rev_growth"]  for r in rows]
-    ebit_margins = [r["ebit_margin"] for r in rows]
-    da_pcts      = [r["da_pct"]      for r in rows]
-    capex_pcts   = [r["capex_pct"]   for r in rows]
-    tax_rates    = [r["tax_rate"]    for r in rows]
-    revenues     = [r["revenue"]     for r in rows]
+    
+    chronological_rows = list(reversed(rows))
+
+    rev_growths  = [r["rev_growth"]  for r in chronological_rows]
+    ebit_margins = [r["ebit_margin"] for r in chronological_rows]
+    da_pcts      = [r["da_pct"]      for r in chronological_rows]
+    capex_pcts   = [r["capex_pct"]   for r in chronological_rows]
+    tax_rates    = [r["tax_rate"]    for r in chronological_rows]
+    revenues     = [r["revenue"]     for r in chronological_rows]
 
     # risk-free rate from FRED (10Y treasury)
     try:
