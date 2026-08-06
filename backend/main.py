@@ -752,13 +752,60 @@ def fetch_dcf_historicals(ticker: str) -> dict:
     erp   = 5.5  # equity risk premium
     wacc  = round(rf_rate + beta * erp, 2)
 
+        # Historical assumption periods
+    valid_growth_rows = [
+        r for r in chronological_rows
+        if r["revenue"] is not None and r["rev_growth"] is not None
+    ]
+
+    recent_5_rows = valid_growth_rows[-5:]
+    older_5_rows  = valid_growth_rows[-10:-5]
+    recent_3_rows = valid_growth_rows[-3:]
+
+    recent_5_growth = [r["rev_growth"] for r in recent_5_rows]
+    older_5_growth  = [r["rev_growth"] for r in older_5_rows]
+    recent_3_growth = [r["rev_growth"] for r in recent_3_rows]
+
+    recent_5_revenue = [r["revenue"] for r in recent_5_rows]
+    older_5_revenue  = [r["revenue"] for r in older_5_rows]
+
     defaults = {
-        "rev_growth_1_5":  { "avg": avg(rev_growths[-5:]),  "median": median(rev_growths), "cagr": cagr(revenues), "3y": avg(rev_growths[-3:]) },
-        "rev_growth_6_10": { "avg": avg(rev_growths[-5:]),  "median": median(rev_growths), "cagr": cagr(revenues), "3y": avg(rev_growths[-3:]) },
-        "ebit_margin":     { "avg": avg(ebit_margins),      "median": median(ebit_margins),"cagr": None,           "3y": avg(ebit_margins[-3:]) },
-        "da_pct":          { "avg": avg(da_pcts),           "median": median(da_pcts),     "cagr": None,           "3y": avg(da_pcts[-3:]) },
-        "capex_pct":       { "avg": avg(capex_pcts),        "median": median(capex_pcts),  "cagr": None,           "3y": avg(capex_pcts[-3:]) },
-        "tax_rate":        { "avg": avg(tax_rates),         "median": median(tax_rates),   "cagr": None,           "3y": avg(tax_rates[-3:]) },
+        "rev_growth_1_5": {
+            "avg":    avg(recent_5_growth),
+            "median": median(recent_5_growth),
+            "cagr":   cagr(recent_5_revenue),
+            "3y":     avg(recent_3_growth),
+        },
+        "rev_growth_6_10": {
+            "avg":    avg(older_5_growth),
+            "median": median(older_5_growth),
+            "cagr":   cagr(older_5_revenue),
+            "3y":     avg(older_5_growth[-3:]),
+        },
+        "ebit_margin": {
+            "avg":    avg(ebit_margins),
+            "median": median(ebit_margins),
+            "cagr":   None,
+            "3y":     avg(ebit_margins[-3:]),
+        },
+        "da_pct": {
+            "avg":    avg(da_pcts),
+            "median": median(da_pcts),
+            "cagr":   None,
+            "3y":     avg(da_pcts[-3:]),
+        },
+        "capex_pct": {
+            "avg":    avg(capex_pcts),
+            "median": median(capex_pcts),
+            "cagr":   None,
+            "3y":     avg(capex_pcts[-3:]),
+        },
+        "tax_rate": {
+            "avg":    avg(tax_rates),
+            "median": median(tax_rates),
+            "cagr":   None,
+            "3y":     avg(tax_rates[-3:]),
+        },
         "wacc":            wacc,
         "rf_rate":         rf_rate,
         "terminal_growth": 2.5,
