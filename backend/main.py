@@ -661,7 +661,8 @@ def fetch_dcf_historicals(ticker: str) -> dict:
     all_years = list(reversed(all_years_chrono))
 
     rows = []
-    for i, yr in enumerate(all_years):
+
+    for i, yr in enumerate(all_years_chrono):
         rev    = revenue_s.get(yr)
         ebit   = ebit_s.get(yr)
         da     = da_s.get(yr)
@@ -670,15 +671,33 @@ def fetch_dcf_historicals(ticker: str) -> dict:
         pretax = pretax_s.get(yr)
 
         ebit_margin = (ebit / rev * 100) if rev and ebit else None
-        # FIX: Use chronologically previous year (index i+1 in chrono list)
-        prev_rev = revenue_s.get(all_years_chrono[i + 1]) if i < len(all_years_chrono) - 1 else None
-        rev_growth  = ((rev - prev_rev) / abs(prev_rev) * 100) if rev and prev_rev else None
-        tax_rate    = (tax / pretax * 100) if tax and pretax and pretax != 0 else None
-        capex_abs   = abs(capex) if capex else None
-        fcf         = (ebit * (1 - (tax_rate or 25)/100) + (da or 0) - (capex_abs or 0)) if ebit else None
-        fcf_margin  = (fcf / rev * 100) if fcf and rev else None
-        da_pct      = (da / rev * 100) if da and rev else None
-        capex_pct   = (capex_abs / rev * 100) if capex_abs and rev else None
+
+        # Previous fiscal year in chronological order
+        prev_rev = revenue_s.get(all_years_chrono[i - 1]) if i > 0 else None
+
+        rev_growth = (
+            ((rev - prev_rev) / abs(prev_rev) * 100)
+            if rev is not None and prev_rev is not None and prev_rev != 0
+            else None
+        )
+
+        tax_rate = (
+            (tax / pretax * 100)
+            if tax is not None and pretax is not None and pretax != 0
+            else None
+        )
+
+        capex_abs = abs(capex) if capex is not None else None
+
+        fcf = (
+            ebit * (1 - (tax_rate or 25) / 100)
+            + (da or 0)
+            - (capex_abs or 0)
+        ) if ebit is not None else None
+
+        fcf_margin = (fcf / rev * 100) if fcf is not None and rev else None
+        da_pct = (da / rev * 100) if da is not None and rev else None
+        capex_pct = (capex_abs / rev * 100) if capex_abs is not None and rev else None
 
         rows.append({
             "year":        yr,
@@ -695,6 +714,8 @@ def fetch_dcf_historicals(ticker: str) -> dict:
             "fcf_margin":  round(fcf_margin, 1) if fcf_margin is not None else None,
         })
 
+    # Newest first for API/frontend display
+    rows.reverse()
     # derive defaults
     def avg(vals):
         v = [x for x in vals if x is not None]
