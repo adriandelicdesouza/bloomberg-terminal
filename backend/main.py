@@ -839,12 +839,7 @@ def fetch_dcf_historicals(ticker: str) -> dict:
             if value is not None
         ],
         key=lambda x: int(x)
-    )[-11:]
-
-    log.warning(
-        f"DEBUG {ticker}: all_years_chrono={all_years_chrono}, "
-        f"count={len(all_years_chrono)}"
-    )
+    )[-10:]
 
     all_years = list(reversed(all_years_chrono))
 
@@ -969,15 +964,15 @@ def fetch_dcf_historicals(ticker: str) -> dict:
             ),
         })
 
-    log.warning(
-        f"DEBUG {ticker}: rows BEFORE reverse="
-        f"{[r['year'] for r in rows]}, count={len(rows)}"
-    )
-
 
     # Newest first for API/frontend display
     rows.reverse()
 
+    chronological_rows = list(reversed(rows))
+
+    # Return only the 10 most recent years to the frontend.
+    # The 11th year is retained internally only for CAGR calculations.
+    rows = rows[:10]
 
     # derive defaults
     def avg(vals):
@@ -1045,8 +1040,13 @@ def fetch_dcf_historicals(ticker: str) -> dict:
         if revenue_s[y] is not None
     ]
 
-    recent_5_revenue = all_revenues_chrono[-6:]
-    older_5_revenue  = all_revenues_chrono[-11:-5]
+    # 5-year CAGR requires 6 annual revenue observations.
+    recent_5_revenue = all_revenues_chrono[-6:] if len(all_revenues_chrono) >= 6 else []
+    older_5_revenue  = (
+        all_revenues_chrono[-11:-5]
+        if len(all_revenues_chrono) >= 11
+        else []
+    )
 
     defaults = {
         "rev_growth_1_5": {
