@@ -1036,10 +1036,17 @@ def fetch_dcf_historicals(ticker: str) -> dict:
     older_5_growth  = [r["rev_growth"] for r in older_5_rows]
     recent_3_growth = [r["rev_growth"] for r in recent_3_rows]
 
-    # Revenue CAGR periods use the complete chronological revenue history,
-    # not the growth rows, because the oldest year has no YoY growth value.
-    recent_5_revenue = revenues[-5:]
-    older_5_revenue  = revenues[-10:-5]
+    # CAGR uses SEC revenue history directly so the required
+    # beginning-year endpoint is available even though only
+    # 10 years are displayed in the DCF table.
+    all_revenues_chrono = [
+        revenue_s[y]
+        for y in sorted(revenue_s, key=lambda x: int(x))
+        if revenue_s[y] is not None
+    ]
+
+    recent_5_revenue = all_revenues_chrono[-6:]
+    older_5_revenue  = all_revenues_chrono[-11:-5]
 
     defaults = {
         "rev_growth_1_5": {
