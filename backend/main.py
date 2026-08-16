@@ -771,6 +771,23 @@ def fetch_sec_historicals(ticker: str) -> dict:
         log.warning(f"SEC historical fetch failed for {ticker}: {e}")
         return {}
 
+
+def calculate_cagr(values, periods=None):
+    """Calculate CAGR from chronological revenue observations."""
+    valid_values = [x for x in values if x is not None]
+
+    if len(valid_values) < 2:
+        return None
+
+    if periods is None:
+        periods = len(values) - 1
+
+    if periods <= 0:
+        return None
+
+    return ((valid_values[-1] / valid_values[0]) ** (1 / periods) - 1) * 100
+
+
 def fetch_dcf_historicals(ticker: str) -> dict:
     cache_key = f"dcf_v2_{ticker}"
     cached = cache_get("price_cache", cache_key, 3600)
@@ -840,8 +857,6 @@ def fetch_dcf_historicals(ticker: str) -> dict:
         ],
         key=lambda x: int(x)
     )[-10:]
-
-    all_years = list(reversed(all_years_chrono))
 
     # Newest first for API/frontend display.
     all_years = list(reversed(all_years_chrono))
@@ -964,7 +979,6 @@ def fetch_dcf_historicals(ticker: str) -> dict:
             ),
         })
 
-
     # Newest first for API/frontend display
     rows.reverse()
 
@@ -981,23 +995,10 @@ def fetch_dcf_historicals(ticker: str) -> dict:
 
     def median(vals):
         v = sorted(x for x in vals if x is not None)
-        if not v: return None
+        if not v:
+            return None
         m = len(v) // 2
         return (v[m] + v[m-1]) / 2 if len(v) % 2 == 0 else v[m]
-
-    def cagr(vals, periods=None):
-        v = [x for x in vals if x is not None]
-
-        if periods is not None and len(v) < periods:
-            return None
-
-        if len(v) < 2:
-            return None
-
-        return ((v[-1] / v[0]) ** (1 / (len(v) - 1)) - 1) * 100
-
-    
-    chronological_rows = list(reversed(rows))
 
     rev_growths  = [r["rev_growth"]  for r in chronological_rows]
     ebit_margins = [r["ebit_margin"] for r in chronological_rows]
@@ -1052,13 +1053,13 @@ def fetch_dcf_historicals(ticker: str) -> dict:
         "rev_growth_1_5": {
             "avg":    avg(recent_5_growth),
             "median": median(recent_5_growth),
-            "cagr": cagr(recent_5_revenue, periods=5),
+            "cagr": calculate_cagr(recent_5_revenue, periods=5),
             "3y":     avg(recent_3_growth),
         },
         "rev_growth_6_10": {
             "avg":    avg(older_5_growth),
             "median": median(older_5_growth),
-            "cagr":   cagr(older_5_revenue, periods=5),
+            "cagr":   calculate_cagr(older_5_revenue, periods=5),
             "3y":     avg(older_5_growth[-3:]),
         },
         "ebit_margin": {
@@ -1114,7 +1115,10 @@ def dcf_historicals(ticker: str):
         raise
     except Exception as e:
         log.error(f"DCF endpoint error for {ticker}: {e}")
-        raise HTTPException(status_code=503, detail=f"DCF data unavailable for {ticker}: {str(e)[:100]}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"DCF data unavailable for {ticker}: {str(e)[:100]}"
+        )
 
 
 @app.post("/api/dcf/calculate")
@@ -1142,6 +1146,7 @@ async def dcf_calculate(request: Request):
     fcfs   = []
     revs   = []
     rev    = last_revenue
+
     for yr in range(1, periods + 1):
         g   = g1 if yr <= 5 else g2
         rev = rev * (1 + g)
@@ -1162,7 +1167,11 @@ async def dcf_calculate(request: Request):
     equity_value     = enterprise_value - net_debt
     intrinsic_value  = equity_value / shares
 
-    upside = ((intrinsic_value - current_price) / current_price * 100) if current_price else 0
+    upside = (
+        ((intrinsic_value - current_price) / current_price * 100)
+        if current_price
+        else 0
+    )
 
     if upside > 20:
         signal = "UNDERVALUED"
@@ -1174,21 +1183,34 @@ async def dcf_calculate(request: Request):
     # Sensitivity: wacc ± 2% in 0.5 steps, tgr ± 1% in 0.5 steps
     wacc_range = [round(wacc * 100 + x * 0.5, 1) for x in range(-2, 3)]
     tgr_range  = [round(tgr  * 100 + x * 0.5, 1) for x in range(-2, 3)]
+
     sensitivity = []
+
     for w in wacc_range:
         row_s = []
+
         for tg in tgr_range:
             w_  = w  / 100
             tg_ = tg / 100
+
             if w_ <= tg_:
                 row_s.append(None)
                 continue
+
             tv_s  = fcfs[-1] * (1 + tg_) / (w_ - tg_)
-            pv_s  = sum(fcf / (1 + w_)**i for i, fcf in enumerate(fcfs, 1))
+            pv_s  = sum(
+                fcf / (1 + w_)**i
+                for i, fcf in enumerate(fcfs, 1)
+            )
             pv_tv_s = tv_s / (1 + w_)**periods
             iv_s  = ((pv_s + pv_tv_s) - net_debt) / shares
+
             row_s.append(round(iv_s, 2))
-        sensitivity.append({"wacc": w, "values": row_s})
+
+        sensitivity.append({
+            "wacc": w,
+            "values": row_s
+        })
 
     return {
         "intrinsic_value": round(intrinsic_value, 2),
@@ -1206,48 +1228,88 @@ async def dcf_calculate(request: Request):
         "tgr_range":       tgr_range,
     }
 
+
 @app.get("/api/news/search")
 def news_search(q: str, limit: int = 40):
     import urllib.request
     import urllib.error
     import xml.etree.ElementTree as ET
-    url = f"https://news.google.com/rss/search?q={urllib.parse.quote(q)}&hl=en-US&gl=US&ceid=US:en"
+
+    url = (
+        "https://news.google.com/rss/search?"
+        f"q={urllib.parse.quote(q)}&hl=en-US&gl=US&ceid=US:en"
+    )
+
     items = []
-    
+
     for attempt in range(2):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+
             with urllib.request.urlopen(req, timeout=8) as r:
                 root = ET.fromstring(r.read())
+
             for item in root.iter("item"):
                 title   = item.findtext("title", "").strip()
                 link    = item.findtext("link", "").strip()
                 pubdate = item.findtext("pubDate", "").strip()
-                source  = item.findtext("source", "Google News").strip()
+                source  = item.findtext(
+                    "source",
+                    "Google News"
+                ).strip()
+
                 if title and link:
-                    items.append({"source": source, "title": title, "link": link, "date": pubdate})
+                    items.append({
+                        "source": source,
+                        "title": title,
+                        "link": link,
+                        "date": pubdate
+                    })
+
             break  # Success
-        except (urllib.error.URLError, urllib.error.HTTPError, Exception) as e:
+
+        except (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            Exception
+        ) as e:
             if attempt < 1:
-                log.warning(f"News search attempt {attempt + 1} failed: {e}, retrying...")
+                log.warning(
+                    f"News search attempt {attempt + 1} failed: "
+                    f"{e}, retrying..."
+                )
                 time.sleep(1)
             else:
-                log.error(f"News search failed after retries: {e}")
-    
+                log.error(
+                    f"News search failed after retries: {e}"
+                )
+
     return {"items": items[:limit]}
+
 
 @app.options("/{full_path:path}")
 async def preflight_handler(full_path: str):
     """Handle CORS preflight requests."""
     return {"status": "ok"}
 
+
 @app.get("/{full_path:path}")
 def serve_frontend(full_path: str):
     index = BASE_DIR / "frontend" / "index.html"
+
     if index.exists():
         return FileResponse(str(index))
+
     return {"error": "Frontend not found"}
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=False)
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8080,
+        reload=False
+    )

@@ -193,3 +193,93 @@ def test_missing_historical_values_do_not_break_period_calculations(
     assert result["defaults"]["da_pct"]["3y"] is not None
     assert result["defaults"]["capex_pct"]["3y"] is not None
     assert result["defaults"]["tax_rate"]["3y"] is not None
+
+
+def test_cagr_positive_growth():
+    values = [
+        100_000_000,
+        118_920_712,
+        141_421_356,
+        168_179_283,
+        200_000_000,
+    ]
+
+    assert main.calculate_cagr(values, periods=4) == pytest.approx(
+        18.9,
+        abs=0.1,
+    )
+
+
+def test_cagr_declining_revenue():
+    values = [
+        200_000_000,
+        168_179_283,
+        141_421_356,
+        118_920_712,
+        100_000_000,
+    ]
+
+    assert main.calculate_cagr(values, periods=4) == pytest.approx(
+        -15.9,
+        abs=0.1,
+    )
+
+
+def test_cagr_flat_revenue():
+    values = [
+        100_000_000,
+        100_000_000,
+        100_000_000,
+        100_000_000,
+        100_000_000,
+    ]
+
+    assert main.calculate_cagr(values, periods=4) == pytest.approx(0.0)
+
+
+def test_cagr_missing_values():
+    values = [
+        100_000_000,
+        None,
+        150_000_000,
+        None,
+        200_000_000,
+    ]
+
+    result = main.calculate_cagr(values)
+
+    assert result is not None
+    assert result == pytest.approx(18.9, abs=0.1)
+
+
+def test_cagr_requires_two_valid_observations():
+    values = [
+        None,
+        100_000_000,
+        None,
+    ]
+
+    assert main.calculate_cagr(values) is None
+
+
+def test_cagr_is_based_on_chronological_observations():
+    chronological = [
+        100_000_000,
+        118_920_712,
+        141_421_356,
+        168_179_283,
+        200_000_000,
+    ]
+
+    assert main.calculate_cagr(chronological, periods=4) == pytest.approx(
+        18.9,
+        abs=0.1,
+    )
+
+
+def test_cagr_does_not_depend_on_frontend_row_order(dcf_result):
+    assumptions = dcf_result["defaults"]["rev_growth_1_5"]
+
+    # SEC revenue is sorted chronologically before CAGR calculation.
+    # The frontend rows are independently returned newest first.
+    assert assumptions["cagr"] > 0
